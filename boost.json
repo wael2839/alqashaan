@@ -1,0 +1,11 @@
+{
+    "agents": [
+        "cursor"
+    ],
+    "cloud": false,
+    "skills": [
+        "laravel-best-practices",
+        "inertia-react-development",
+        "tailwindcss-development"
+    ]
+}

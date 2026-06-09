@@ -71,6 +71,7 @@ class LegacyDatabaseImporter
                     'phone' => $this->normalizePhone($reservation['phone']),
                     'amount' => max(0, (float) $reservation['amount']),
                     'booking_date' => $reservation['reservation_date'],
+                    'notes' => $this->nullableText($reservation['notes'] ?? null),
                     'type' => $reservation['reservation_type'],
                     'status' => $reservation['status'],
                     'created_at' => $reservation['created_at'],

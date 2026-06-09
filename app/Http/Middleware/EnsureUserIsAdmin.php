@@ -11,7 +11,7 @@ class EnsureUserIsAdmin
     public function handle(Request $request, Closure $next): Response
     {
         if (! $request->user()?->isAdmin()) {
-            abort(403, 'Admin access required.');
+            abort(403, 'يتطلب الوصول صلاحيات المدير.');
         }
 
         return $next($request);

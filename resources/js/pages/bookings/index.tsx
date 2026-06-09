@@ -9,7 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/hooks/use-auth';
 import AppLayout from '@/layouts/app-layout';
 import { bookingsApi, type Booking, type PaginationMeta } from '@/lib/api';
-import { BOOKING_STATUS_LABELS, BOOKING_TYPE_LABELS, bookingStatusBadgeClass, formatCurrency, formatDualDate } from '@/lib/dates';
+import {
+    BOOKING_STATUS_LABELS,
+    BOOKING_TYPE_LABELS,
+    bookingStatusBadgeClass,
+    formatContractNumber,
+    formatCurrency,
+    formatDualDate,
+} from '@/lib/dates';
 import { type BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/react';
 import { ChevronLeft, ChevronRight, CalendarDays, Plus, Search } from 'lucide-react';
@@ -26,13 +33,45 @@ const emptyForm = {
     phone: '',
     amount: '',
     booking_date: '',
+    notes: '',
     type: 'full' as Booking['type'],
 };
+
+const notesFieldClass =
+    'flex min-h-[88px] w-full rounded-xl border border-input bg-background px-4 py-2.5 text-base shadow-sm ring-offset-background transition-all duration-200 ease-in-out placeholder:text-muted-foreground hover:border-primary/30 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm';
 
 const statusTabs: { value: Booking['status']; label: string }[] = [
     { value: 'active', label: 'نشطة' },
     { value: 'completed', label: 'مكتملة' },
 ];
+
+function BookingStatusBadges({ booking, layout }: { booking: Booking; layout: 'mobile' | 'desktop' }) {
+    const statusBadge = (
+        <span className={bookingStatusBadgeClass(booking.status)}>{BOOKING_STATUS_LABELS[booking.status]}</span>
+    );
+
+    const notesBadge = booking.notes ? (
+        <span className="badge-notes" title={booking.notes}>
+            {booking.notes}
+        </span>
+    ) : null;
+
+    if (layout === 'mobile') {
+        return (
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                {notesBadge}
+                {statusBadge}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col items-start gap-1.5">
+            {statusBadge}
+            {notesBadge}
+        </div>
+    );
+}
 
 export default function BookingsIndex() {
     const { isAdmin } = useAuth();
@@ -183,13 +222,14 @@ export default function BookingsIndex() {
                                         {errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="contract_number">رقم العقد</Label>
+                                        <Label htmlFor="contract_number">رقم العقد (اختياري)</Label>
                                         <Input
                                             id="contract_number"
                                             value={form.contract_number}
                                             onChange={(e) => setForm({ ...form, contract_number: e.target.value })}
-                                            required
+                                            placeholder="0"
                                         />
+                                        <p className="meta-text">اتركه فارغاً لعرض 0</p>
                                         {errors.contract_number && <p className="text-sm text-destructive">{errors.contract_number}</p>}
                                     </div>
                                     <div className="space-y-2">
@@ -200,7 +240,20 @@ export default function BookingsIndex() {
                                             type={form.type}
                                             error={errors.booking_date}
                                         />
-                                        <p className="meta-text">التواريخ الخضراء متاحة للحجز حسب النوع المختار</p>
+                                        <p className="meta-text">التاريخ المعتمد في النظام هو الميلادي؛ التاريخ الهجري للعرض فقط.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="notes">ملاحظات (اختياري)</Label>
+                                        <textarea
+                                            id="notes"
+                                            className={notesFieldClass}
+                                            value={form.notes}
+                                            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                                            placeholder="مثال: ثاني العيد، حفل نساء فقط..."
+                                            rows={3}
+                                            maxLength={500}
+                                        />
+                                        {errors.notes && <p className="text-sm text-destructive">{errors.notes}</p>}
                                     </div>
                                     <DialogFooter>
                                         <AdminOnlyButton type="submit" disabled={submitting}>
@@ -268,7 +321,7 @@ export default function BookingsIndex() {
                             <>
                                 <div className="divide-y divide-border md:hidden">
                                     {bookings.map((booking) => {
-                                        const dates = formatDualDate(booking.booking_date);
+                                        const dates = formatDualDate(booking.booking_date, booking.hijri_date);
 
                                         return (
                                             <button
@@ -282,15 +335,13 @@ export default function BookingsIndex() {
                                                         <div className="truncate text-base font-semibold text-foreground">{booking.customer_name}</div>
                                                         <div className="mt-0.5 text-xs text-muted-foreground">{booking.phone}</div>
                                                     </div>
-                                                    <span className={bookingStatusBadgeClass(booking.status)}>
-                                                        {BOOKING_STATUS_LABELS[booking.status]}
-                                                    </span>
+                                                    <BookingStatusBadges booking={booking} layout="mobile" />
                                                 </div>
 
                                                 <div className="booking-mobile-card-grid">
                                                     <div>
                                                         <div className="booking-mobile-card-label">العقد</div>
-                                                        <div className="booking-mobile-card-value">{booking.contract_number}</div>
+                                                        <div className="booking-mobile-card-value">{formatContractNumber(booking.contract_number)}</div>
                                                     </div>
                                                     <div>
                                                         <div className="booking-mobile-card-label">النوع</div>
@@ -300,7 +351,8 @@ export default function BookingsIndex() {
                                                     </div>
                                                     <div>
                                                         <div className="booking-mobile-card-label">التاريخ</div>
-                                                        <div className="booking-mobile-card-value">{dates.gregorian}</div>
+                                                        <div className="booking-mobile-card-value">{dates.weekday}</div>
+                                                        <div className="text-xs text-muted-foreground">{dates.gregorian}</div>
                                                         <div className="cell-date-hijri text-xs">{dates.hijri}</div>
                                                     </div>
                                                     <div>
@@ -344,7 +396,7 @@ export default function BookingsIndex() {
                                         </thead>
                                         <tbody>
                                             {bookings.map((booking) => {
-                                                const dates = formatDualDate(booking.booking_date);
+                                                const dates = formatDualDate(booking.booking_date, booking.hijri_date);
 
                                                 return (
                                                     <tr
@@ -352,13 +404,14 @@ export default function BookingsIndex() {
                                                         className="cursor-pointer"
                                                         onClick={() => router.visit(`/bookings/${booking.id}`)}
                                                     >
-                                                        <td className="cell-primary">{booking.contract_number}</td>
+                                                        <td className="cell-primary">{formatContractNumber(booking.contract_number)}</td>
                                                         <td>
                                                             <div className="cell-primary">{booking.customer_name}</div>
                                                             <div className="cell-secondary">{booking.phone}</div>
                                                         </td>
                                                         <td>
-                                                            <div className="cell-primary">{dates.gregorian}</div>
+                                                            <div className="cell-primary">{dates.weekday}</div>
+                                                            <div className="cell-secondary">{dates.gregorian}</div>
                                                             <div className="cell-date-hijri">{dates.hijri}</div>
                                                         </td>
                                                         <td>
@@ -377,9 +430,7 @@ export default function BookingsIndex() {
                                                             <span className="badge-type">{BOOKING_TYPE_LABELS[booking.type]}</span>
                                                         </td>
                                                         <td>
-                                                            <span className={bookingStatusBadgeClass(booking.status)}>
-                                                                {BOOKING_STATUS_LABELS[booking.status]}
-                                                            </span>
+                                                            <BookingStatusBadges booking={booking} layout="desktop" />
                                                         </td>
                                                     </tr>
                                                 );

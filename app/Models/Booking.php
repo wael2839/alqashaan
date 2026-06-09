@@ -17,6 +17,7 @@ class Booking extends Model
         'phone',
         'amount',
         'booking_date',
+        'notes',
         'type',
         'status',
     ];

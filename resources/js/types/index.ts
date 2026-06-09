@@ -21,10 +21,36 @@ export interface NavItem {
     isActive?: boolean;
 }
 
+export interface HijriParts {
+    year: number;
+    month: number;
+    day: number;
+}
+
+export interface HijriCalendarDefaults {
+    current_hijri_year: number;
+    default_range: {
+        from: string;
+        to: string;
+        from_hijri?: HijriParts;
+        to_hijri?: HijriParts;
+    };
+}
+
+export interface GregorianCalendarDefaults {
+    current_gregorian_year: number;
+    default_range: {
+        from: string;
+        to: string;
+    };
+}
+
 export interface SharedData {
     name: string;
     quote: { message: string; author: string };
     auth: Auth;
+    hijriCalendarDefaults: HijriCalendarDefaults | null;
+    gregorianCalendarDefaults: GregorianCalendarDefaults | null;
     [key: string]: unknown;
 }
 

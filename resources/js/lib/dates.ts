@@ -1,4 +1,11 @@
-import { toGregorian, toHijri } from 'hijri-converter';
+import {
+    formatHijriParts,
+    getOfficialDefaultDashboardRange,
+    getOfficialHijriYearBounds,
+    gregorianToHijriOfficial,
+    hijriToGregorianOfficial,
+    type HijriParts,
+} from '@/lib/saudi-hijri-calendar';
 
 const LATIN_NUMBER_FORMAT = 'ar-SA-u-nu-latn';
 
@@ -16,16 +23,14 @@ export function parseIsoDate(date: string): { year: number; month: number; day: 
     return { year, month, day };
 }
 
-export function gregorianToHijriParts(date: string): { hy: number; hm: number; hd: number } {
-    const { year, month, day } = parseIsoDate(date);
+export type { HijriParts };
 
-    return toHijri(year, month, day);
+export async function gregorianToHijriParts(date: string): Promise<HijriParts> {
+    return gregorianToHijriOfficial(date);
 }
 
-export function hijriToGregorianIso(hy: number, hm: number, hd: number): string {
-    const gregorian = toGregorian(hy, hm, hd);
-
-    return toIsoDate(gregorian.gy, gregorian.gm, gregorian.gd);
+export async function hijriToGregorianIso(hy: number, hm: number, hd: number): Promise<string> {
+    return hijriToGregorianOfficial(hy, hm, hd);
 }
 
 export function getGregorianYearBounds(year: number): { from: string; to: string } {
@@ -35,32 +40,58 @@ export function getGregorianYearBounds(year: number): { from: string; to: string
     };
 }
 
-export function getCurrentHijriYear(): number {
+export async function getCurrentHijriYear(): Promise<number> {
     const now = new Date();
+    const hijri = await gregorianToHijriOfficial(toIsoDate(now.getFullYear(), now.getMonth() + 1, now.getDate()));
 
-    return gregorianToHijriParts(toIsoDate(now.getFullYear(), now.getMonth() + 1, now.getDate())).hy;
+    return hijri.year;
 }
 
-export function getHijriYearBounds(hy: number): { from: string; to: string } {
-    const from = hijriToGregorianIso(hy, 1, 1);
-    const nextYearStart = parseIsoDate(hijriToGregorianIso(hy + 1, 1, 1));
-    const end = new Date(nextYearStart.year, nextYearStart.month - 1, nextYearStart.day);
-    end.setDate(end.getDate() - 1);
-
-    return {
-        from,
-        to: toIsoDate(end.getFullYear(), end.getMonth() + 1, end.getDate()),
-    };
+export async function getHijriYearBounds(hy: number): Promise<{ from: string; to: string }> {
+    return getOfficialHijriYearBounds(hy);
 }
 
-export function getDefaultDashboardDateRange(): { from: string; to: string } {
-    return getHijriYearBounds(getCurrentHijriYear());
+export async function getDefaultDashboardDateRange(): Promise<{ from: string; to: string }> {
+    return getOfficialDefaultDashboardRange();
 }
 
-export function formatDateRangeLabel(fromDate: string, toDate: string): { gregorian: string; hijri: string } {
+export async function getDefaultRangeForMode(
+    mode: 'gregorian' | 'hijri',
+    shared?: {
+        hijri?: {
+            current_hijri_year: number;
+            default_range: { from: string; to: string };
+        } | null;
+        gregorian?: {
+            current_gregorian_year: number;
+            default_range: { from: string; to: string };
+        } | null;
+    },
+): Promise<{ from: string; to: string }> {
+    if (mode === 'gregorian') {
+        if (shared?.gregorian?.default_range) {
+            return shared.gregorian.default_range;
+        }
+
+        return getGregorianYearBounds(new Date().getFullYear());
+    }
+
+    if (shared?.hijri?.default_range) {
+        return shared.hijri.default_range;
+    }
+
+    return getDefaultDashboardDateRange();
+}
+
+export function formatDateRangeLabel(
+    fromDate: string,
+    toDate: string,
+    fromHijri?: HijriParts | null,
+    toHijri?: HijriParts | null,
+): { gregorian: string; hijri: string } {
     return {
         gregorian: `${formatGregorianDate(fromDate)} — ${formatGregorianDate(toDate)}`,
-        hijri: `${formatHijriDate(fromDate)} — ${formatHijriDate(toDate)}`,
+        hijri: `${formatHijriDate(fromDate, fromHijri)} — ${formatHijriDate(toDate, toHijri)}`,
     };
 }
 
@@ -76,38 +107,77 @@ export function formatInteger(value: number): string {
     return formatNumber(value, { maximumFractionDigits: 0 });
 }
 
+export function formatContractNumber(value: string | null | undefined): string {
+    const trimmed = (value ?? '').trim();
+
+    return trimmed === '' ? '0' : trimmed;
+}
+
+export function contractNumberForForm(value: string | null | undefined): string {
+    return (value ?? '').trim();
+}
+
+const ARABIC_WEEKDAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
+
+export function formatArabicWeekday(date: string): string {
+    const { year, month, day } = parseIsoDate(date);
+
+    return ARABIC_WEEKDAYS[new Date(year, month - 1, day).getDay()];
+}
+
 export function formatGregorianDate(date: string): string {
     const [year, month, day] = date.split('-').map(Number);
 
     return `${pad(day)}/${pad(month)}/${year}`;
 }
 
-export function formatHijriDate(date: string): string {
-    const [year, month, day] = date.split('-').map(Number);
-    const hijri = toHijri(year, month, day);
+export function formatHijriDate(date: string, hijri?: HijriParts | null): string {
+    if (hijri) {
+        return formatHijriParts(hijri);
+    }
 
-    return `${pad(hijri.hd)}/${pad(hijri.hm)}/${hijri.hy} هـ`;
+    return '...';
 }
 
-export function formatDualDate(date: string): { gregorian: string; hijri: string } {
+export function formatDualDate(date: string, hijri?: HijriParts | null): { weekday: string; gregorian: string; hijri: string } {
     return {
+        weekday: formatArabicWeekday(date),
         gregorian: formatGregorianDate(date),
-        hijri: formatHijriDate(date),
+        hijri: formatHijriDate(date, hijri),
     };
+}
+
+export function formatBookingDayStatus(isPast: boolean, available: boolean, bookedSummary?: string): string {
+    if (isPast) {
+        return 'تاريخ سابق';
+    }
+
+    if (available) {
+        return 'متاح للحجز';
+    }
+
+    if (bookedSummary) {
+        return `محجوز لـ ${bookedSummary}`;
+    }
+
+    return 'غير متاح للحجز';
 }
 
 export function formatMonthYear(date: Date): string {
     return `${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
 }
 
-export function formatChartMonthLabel(month: string, calendarMode: 'gregorian' | 'hijri' = 'gregorian'): string {
+export async function formatChartMonthLabel(
+    month: string,
+    calendarMode: 'gregorian' | 'hijri' = 'gregorian',
+): Promise<string> {
     const [year, monthNum] = month.split('-').map(Number);
     const isoMid = toIsoDate(year, monthNum, 15);
 
     if (calendarMode === 'hijri') {
-        const hijri = gregorianToHijriParts(isoMid);
+        const hijri = await gregorianToHijriOfficial(isoMid);
 
-        return `${pad(hijri.hm)}/${hijri.hy}`;
+        return `${pad(hijri.month)}/${hijri.year}`;
     }
 
     return `${pad(monthNum)}/${year}`;

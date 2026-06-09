@@ -335,6 +335,13 @@
         @apply inline-flex rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground ring-1 ring-border sm:text-sm;
     }
 
+    .badge-notes {
+        @apply inline-flex max-w-[9rem] truncate rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 sm:max-w-[12rem] sm:text-sm;
+        background: color-mix(in srgb, var(--warning) 18%, transparent);
+        color: var(--warning);
+        --tw-ring-color: color-mix(in srgb, var(--warning) 40%, transparent);
+    }
+
     .detail-card {
         @apply rounded-2xl border border-border bg-card shadow-sm transition-all duration-200 ease-in-out hover:shadow-md;
     }

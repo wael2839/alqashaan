@@ -26,7 +26,7 @@ class ReportController extends Controller
         $toDate = $request->validated('to_date');
 
         $report = $reportService->build($fromDate, $toDate);
-        $filename = sprintf('bookings-report-%s-to-%s.pdf', $fromDate, $toDate);
+        $filename = sprintf('تقرير-حجوزات-%s-الي-%s.pdf', $fromDate, $toDate);
 
         $pdf = $pdfBuilder->build(
             $report,

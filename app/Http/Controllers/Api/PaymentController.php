@@ -26,7 +26,7 @@ class PaymentController extends Controller
         $payment = $booking->payments()->create($request->validated());
 
         return response()->json([
-            'message' => 'Payment recorded successfully.',
+            'message' => 'تم تسجيل الدفعة بنجاح.',
             'data' => $payment,
         ], 201);
     }
@@ -40,7 +40,7 @@ class PaymentController extends Controller
         $payment->update($request->validated());
 
         return response()->json([
-            'message' => 'Payment updated successfully.',
+            'message' => 'تم تحديث الدفعة بنجاح.',
             'data' => $payment->fresh(),
         ]);
     }
@@ -54,7 +54,7 @@ class PaymentController extends Controller
         $payment->delete();
 
         return response()->json([
-            'message' => 'Payment deleted successfully.',
+            'message' => 'تم حذف الدفعة بنجاح.',
         ]);
     }
 

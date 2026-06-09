@@ -1,7 +1,7 @@
 import type { DashboardCalendarMode } from '@/components/dashboard-date-range-filter';
 import type { DashboardMonthlyTrend } from '@/lib/api';
 import { formatChartMonthLabel, formatCompactCurrency, formatCurrency } from '@/lib/dates';
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Bar,
     BarChart,
@@ -39,23 +39,15 @@ interface TooltipPayloadItem {
     value?: number;
 }
 
-function ChartTooltip({
-    active,
-    payload,
-    label,
-}: {
-    active?: boolean;
-    payload?: TooltipPayloadItem[];
-    label?: string;
-}) {
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadItem[]; label?: string }) {
     if (!active || !payload?.length) {
         return null;
     }
 
     return (
-        <div className="rounded-xl border border-border bg-card px-3 py-2.5 text-sm shadow-md">
-            <p className="mb-2 font-medium text-foreground">{label}</p>
-            <div className="space-y-1">
+        <div className="rounded-xl border border-border bg-card p-3 shadow-lg">
+            <p className="mb-2 text-sm font-medium text-foreground">{label}</p>
+            <div className="space-y-1.5 text-sm">
                 {payload.map((entry) => (
                     <div key={entry.name} className="flex items-center justify-between gap-4">
                         <span className="flex items-center gap-2 text-muted-foreground">
@@ -71,14 +63,26 @@ function ChartTooltip({
 }
 
 export function DashboardMonthlyChart({ data, calendarMode, loading = false }: DashboardMonthlyChartProps) {
-    const chartData = useMemo<ChartPoint[]>(
-        () =>
-            data.map((point) => ({
+    const [chartData, setChartData] = useState<ChartPoint[]>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        Promise.all(
+            data.map(async (point) => ({
                 ...point,
-                label: formatChartMonthLabel(point.month, calendarMode),
+                label: await formatChartMonthLabel(point.month, calendarMode),
             })),
-        [data, calendarMode],
-    );
+        ).then((points) => {
+            if (!cancelled) {
+                setChartData(points);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [data, calendarMode]);
 
     if (loading) {
         return (
@@ -100,37 +104,23 @@ export function DashboardMonthlyChart({ data, calendarMode, loading = false }: D
     }
 
     return (
-        <div className="min-w-0" dir="ltr">
-            <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 8 }} barGap={4} barCategoryGap="20%">
-                    <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" vertical={false} />
-                    <XAxis
-                        dataKey="label"
-                        tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={{ stroke: 'var(--border)' }}
-                        interval="preserveStartEnd"
-                        minTickGap={24}
-                    />
-                    <YAxis
-                        tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={56}
-                        tickFormatter={(value: number) => formatCompactCurrency(value)}
-                    />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'color-mix(in srgb, var(--muted) 35%, transparent)' }} />
-                    <Legend
-                        verticalAlign="top"
-                        align="right"
-                        wrapperStyle={{ paddingBottom: 12, fontSize: 13 }}
-                        formatter={(value: string) => <span style={{ color: 'var(--foreground)' }}>{value}</span>}
-                    />
-                    <Bar dataKey="revenue" name="الإيرادات" fill={CHART_COLORS.revenue} radius={[4, 4, 0, 0]} maxBarSize={28} />
-                    <Bar dataKey="expenses" name="المصروفات" fill={CHART_COLORS.expenses} radius={[4, 4, 0, 0]} maxBarSize={28} />
-                    <Bar dataKey="profit" name="صافي الربح" fill={CHART_COLORS.profit} radius={[4, 4, 0, 0]} maxBarSize={28} />
-                </BarChart>
-            </ResponsiveContainer>
-        </div>
+        <ResponsiveContainer width="100%" height={288}>
+            <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis
+                    tickFormatter={(value: number) => formatCompactCurrency(value)}
+                    tick={{ fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={56}
+                />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend />
+                <Bar dataKey="revenue" name="الإيرادات" fill={CHART_COLORS.revenue} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expenses" name="المصروفات" fill={CHART_COLORS.expenses} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="profit" name="صافي الربح" fill={CHART_COLORS.profit} radius={[4, 4, 0, 0]} />
+            </BarChart>
+        </ResponsiveContainer>
     );
 }

@@ -7,9 +7,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/use-auth';
+import { useConfirm } from '@/hooks/use-confirm';
 import AppLayout from '@/layouts/app-layout';
 import { bookingsApi, expensesApi, paymentsApi, type Booking, type Expense, type Payment } from '@/lib/api';
-import { BOOKING_STATUS_LABELS, BOOKING_TYPE_LABELS, bookingStatusBadgeClass, formatCurrency, formatDualDate } from '@/lib/dates';
+import {
+    BOOKING_STATUS_LABELS,
+    BOOKING_TYPE_LABELS,
+    bookingStatusBadgeClass,
+    contractNumberForForm,
+    formatContractNumber,
+    formatCurrency,
+    formatDualDate,
+} from '@/lib/dates';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/react';
@@ -22,6 +31,7 @@ interface Props {
 
 export default function BookingShow({ bookingId }: Props) {
     const { isAdmin } = useAuth();
+    const { confirm, alert } = useConfirm();
     const [booking, setBooking] = useState<Booking | null>(null);
     const [loading, setLoading] = useState(true);
     const [editOpen, setEditOpen] = useState(false);
@@ -31,8 +41,12 @@ export default function BookingShow({ bookingId }: Props) {
         phone: '',
         amount: '',
         booking_date: '',
+        notes: '',
         type: 'full' as Booking['type'],
     });
+
+    const notesFieldClass =
+        'flex min-h-[88px] w-full rounded-xl border border-input bg-background px-4 py-2.5 text-base shadow-sm ring-offset-background transition-all duration-200 ease-in-out placeholder:text-muted-foreground hover:border-primary/30 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/25 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm';
     const [editErrors, setEditErrors] = useState<Record<string, string>>({});
     const [editSubmitting, setEditSubmitting] = useState(false);
     const [paymentForm, setPaymentForm] = useState({ amount: '', description: '', payment_date: new Date().toISOString().split('T')[0] });
@@ -41,7 +55,7 @@ export default function BookingShow({ bookingId }: Props) {
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'لوحة التحكم', href: '/dashboard' },
         { title: 'الحجوزات', href: '/bookings' },
-        { title: booking?.contract_number ?? '...', href: `/bookings/${bookingId}` },
+        { title: booking ? formatContractNumber(booking.contract_number) : '...', href: `/bookings/${bookingId}` },
     ];
 
     const loadBooking = () => {
@@ -60,11 +74,12 @@ export default function BookingShow({ bookingId }: Props) {
         if (!booking) return;
 
         setEditForm({
-            contract_number: booking.contract_number,
+            contract_number: contractNumberForForm(booking.contract_number),
             customer_name: booking.customer_name,
             phone: booking.phone,
             amount: String(booking.amount),
             booking_date: booking.booking_date,
+            notes: booking.notes ?? '',
             type: booking.type,
         });
         setEditErrors({});
@@ -84,6 +99,7 @@ export default function BookingShow({ bookingId }: Props) {
                 customer_name: editForm.customer_name,
                 phone: editForm.phone,
                 amount: parseFloat(editForm.amount),
+                notes: editForm.notes,
             };
 
             if (booking.status === 'active') {
@@ -106,19 +122,49 @@ export default function BookingShow({ bookingId }: Props) {
     };
 
     const handleComplete = async () => {
-        if (!confirm('إنهاء هذا الحجز وتحديده كمكتمل؟ لن يمكن إضافة مدفوعات أو مصروفات حتى إعادة التفعيل.')) return;
+        const confirmed = await confirm({
+            title: 'إنهاء الحجز',
+            description: 'سيتم تحديد الحجز كمكتمل. لن يمكن إضافة مدفوعات أو مصروفات حتى إعادة التفعيل.',
+            confirmLabel: 'إنهاء الحجز',
+            variant: 'default',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
         await bookingsApi.complete(bookingId);
         loadBooking();
     };
 
     const handleCancel = async () => {
-        if (!confirm('إلغاء هذا الحجز؟ ستُحفظ البيانات المالية في الإحصائيات ويصبح التاريخ متاحاً للحجز.')) return;
+        const confirmed = await confirm({
+            title: 'إلغاء الحجز',
+            description: 'ستُحفظ البيانات المالية في الإحصائيات ويصبح التاريخ متاحاً للحجز.',
+            confirmLabel: 'إلغاء الحجز',
+            variant: 'warning',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
         await bookingsApi.cancel(bookingId);
         loadBooking();
     };
 
     const handleReactivate = async () => {
-        if (!confirm('إعادة تفعيل هذا الحجز؟')) return;
+        const confirmed = await confirm({
+            title: 'إعادة تفعيل الحجز',
+            description: 'سيعود الحجز نشطاً ويمكن إضافة مدفوعات ومصروفات من جديد.',
+            confirmLabel: 'إعادة التفعيل',
+            variant: 'default',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
         try {
             await bookingsApi.reactivate(bookingId);
             loadBooking();
@@ -126,13 +172,26 @@ export default function BookingShow({ bookingId }: Props) {
             if (error && typeof error === 'object' && 'response' in error) {
                 const response = (error as { response?: { data?: { errors?: Record<string, string[]> } } }).response;
                 const message = response?.data?.errors?.booking_date?.[0] ?? response?.data?.errors?.status?.[0];
-                if (message) alert(message);
+
+                if (message) {
+                    await alert({ title: 'تعذّر إعادة التفعيل', description: message, variant: 'warning' });
+                }
             }
         }
     };
 
     const handleDelete = async () => {
-        if (!confirm('حذف هذا الحجز نهائياً؟ سيتم حذف جميع المدفوعات والمصروفات المرتبطة به.')) return;
+        const confirmed = await confirm({
+            title: 'حذف الحجز نهائياً',
+            description: 'سيتم حذف الحجز وجميع المدفوعات والمصروفات المرتبطة به. لا يمكن التراجع عن هذا الإجراء.',
+            confirmLabel: 'حذف نهائي',
+            variant: 'destructive',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
         await bookingsApi.delete(bookingId);
         router.visit('/bookings');
     };
@@ -160,13 +219,33 @@ export default function BookingShow({ bookingId }: Props) {
     };
 
     const handleDeletePayment = async (payment: Payment) => {
-        if (!confirm('حذف هذه الدفعة؟')) return;
+        const confirmed = await confirm({
+            title: 'حذف الدفعة',
+            description: 'هل تريد حذف هذه الدفعة؟ لا يمكن التراجع عن هذا الإجراء.',
+            confirmLabel: 'حذف الدفعة',
+            variant: 'destructive',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
         await paymentsApi.delete(bookingId, payment.id);
         loadBooking();
     };
 
     const handleDeleteExpense = async (expense: Expense) => {
-        if (!confirm('حذف هذا المصروف؟')) return;
+        const confirmed = await confirm({
+            title: 'حذف المصروف',
+            description: 'هل تريد حذف هذا المصروف؟ لا يمكن التراجع عن هذا الإجراء.',
+            confirmLabel: 'حذف المصروف',
+            variant: 'destructive',
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
         await expensesApi.delete(bookingId, expense.id);
         loadBooking();
     };
@@ -192,7 +271,7 @@ export default function BookingShow({ bookingId }: Props) {
         );
     }
 
-    const dates = formatDualDate(booking.booking_date);
+    const dates = formatDualDate(booking.booking_date, booking.hijri_date);
     const isActive = booking.status === 'active';
     const canModifyFinancials = isActive && isAdmin;
 
@@ -203,7 +282,8 @@ export default function BookingShow({ bookingId }: Props) {
             iconClass: 'icon-tile-primary',
             content: (
                 <>
-                    <p className="detail-card-value">{dates.gregorian}</p>
+                    <p className="detail-card-value">{dates.weekday}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">{dates.gregorian}</p>
                     <p className="cell-date-hijri mt-0.5">{dates.hijri}</p>
                 </>
             ),
@@ -269,7 +349,7 @@ export default function BookingShow({ bookingId }: Props) {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={`حجز ${booking.contract_number}`} />
+            <Head title={`حجز ${formatContractNumber(booking.contract_number)}`} />
             <div className="page-container">
                 <div className="page-header flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -281,7 +361,7 @@ export default function BookingShow({ bookingId }: Props) {
                         </Button>
                         <h1 className="page-title">{booking.customer_name}</h1>
                         <p className="page-subtitle">
-                            {booking.contract_number} — {booking.phone}
+                            {formatContractNumber(booking.contract_number)} — {booking.phone}
                         </p>
                     </div>
                     {isAdmin && (
@@ -321,6 +401,13 @@ export default function BookingShow({ bookingId }: Props) {
                         {booking.status === 'completed'
                             ? 'هذا الحجز مكتمل. لا يمكن إضافة مدفوعات أو مصروفات إلا بعد إعادة التفعيل.'
                             : 'هذا الحجز ملغى. البيانات المالية محفوظة في الإحصائيات والتاريخ متاح للحجز. أعد التفعيل لإضافة مدفوعات أو مصروفات.'}
+                    </div>
+                )}
+
+                {booking.notes && (
+                    <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
+                        <p className="text-sm font-medium text-foreground">ملاحظات</p>
+                        <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{booking.notes}</p>
                     </div>
                 )}
 
@@ -552,13 +639,14 @@ export default function BookingShow({ bookingId }: Props) {
                             {editErrors.amount && <p className="text-sm text-destructive">{editErrors.amount}</p>}
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="edit_contract_number">رقم العقد</Label>
+                            <Label htmlFor="edit_contract_number">رقم العقد (اختياري)</Label>
                             <Input
                                 id="edit_contract_number"
                                 value={editForm.contract_number}
                                 onChange={(e) => setEditForm({ ...editForm, contract_number: e.target.value })}
-                                required
+                                placeholder="0"
                             />
+                            <p className="meta-text">اتركه فارغاً لعرض 0</p>
                             {editErrors.contract_number && <p className="text-sm text-destructive">{editErrors.contract_number}</p>}
                         </div>
                         {booking.status === 'active' && (
@@ -571,8 +659,22 @@ export default function BookingShow({ bookingId }: Props) {
                                     excludeBookingId={bookingId}
                                     error={editErrors.booking_date}
                                 />
+                                <p className="meta-text">التاريخ المعتمد في النظام هو الميلادي؛ التاريخ الهجري للعرض فقط.</p>
                             </div>
                         )}
+                        <div className="space-y-2">
+                            <Label htmlFor="edit_notes">ملاحظات (اختياري)</Label>
+                            <textarea
+                                id="edit_notes"
+                                className={notesFieldClass}
+                                value={editForm.notes}
+                                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                                placeholder="مثال: ثاني العيد، حفل نساء فقط..."
+                                rows={3}
+                                maxLength={500}
+                            />
+                            {editErrors.notes && <p className="text-sm text-destructive">{editErrors.notes}</p>}
+                        </div>
                         <DialogFooter>
                             <AdminOnlyButton type="submit" disabled={editSubmitting}>
                                 {editSubmitting ? 'جاري الحفظ...' : 'حفظ التعديلات'}

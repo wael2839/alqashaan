@@ -7,36 +7,20 @@ use Illuminate\Validation\ValidationException;
 
 class BookingConflictValidator
 {
-    /**
-     * @return list<string>
-     */
-    public static function conflictingTypes(string $type): array
+    public static function validate(string $date, ?int $excludeBookingId = null): void
     {
-        return match ($type) {
-            'full' => ['full', 'men', 'women'],
-            'men' => ['full', 'men'],
-            'women' => ['full', 'women'],
-            default => [],
-        };
-    }
-
-    public static function validate(string $date, string $type, ?int $excludeBookingId = null): void
-    {
-        if (! self::isAvailable($date, $type, $excludeBookingId)) {
+        if (! self::isAvailable($date, $excludeBookingId)) {
             throw ValidationException::withMessages([
-                'booking_date' => ['This date is already booked for the selected hall type.'],
+                'booking_date' => ['هذا التاريخ محجوز مسبقاً.'],
             ]);
         }
     }
 
-    public static function isAvailable(string $date, string $type, ?int $excludeBookingId = null): bool
+    public static function isAvailable(string $date, ?int $excludeBookingId = null): bool
     {
-        $conflictingTypes = self::conflictingTypes($type);
-
         $query = Booking::query()
             ->where('status', 'active')
-            ->whereDate('booking_date', $date)
-            ->whereIn('type', $conflictingTypes);
+            ->whereDate('booking_date', $date);
 
         if ($excludeBookingId) {
             $query->where('id', '!=', $excludeBookingId);

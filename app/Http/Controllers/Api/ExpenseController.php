@@ -26,7 +26,7 @@ class ExpenseController extends Controller
         $expense = $booking->expenses()->create($request->validated());
 
         return response()->json([
-            'message' => 'Expense recorded successfully.',
+            'message' => 'تم تسجيل المصروف بنجاح.',
             'data' => $expense,
         ], 201);
     }
@@ -40,7 +40,7 @@ class ExpenseController extends Controller
         $expense->update($request->validated());
 
         return response()->json([
-            'message' => 'Expense updated successfully.',
+            'message' => 'تم تحديث المصروف بنجاح.',
             'data' => $expense->fresh(),
         ]);
     }
@@ -54,7 +54,7 @@ class ExpenseController extends Controller
         $expense->delete();
 
         return response()->json([
-            'message' => 'Expense deleted successfully.',
+            'message' => 'تم حذف المصروف بنجاح.',
         ]);
     }
 

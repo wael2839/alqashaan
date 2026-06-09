@@ -3,8 +3,6 @@
 namespace App\Support;
 
 use DateTimeImmutable;
-use GeniusTS\HijriDate\Hijri;
-use IntlDateFormatter;
 
 class ArabicDateFormatter
 {
@@ -21,39 +19,18 @@ class ArabicDateFormatter
 
     public static function hijri(string $isoDate): string
     {
-        return self::hijriPlain($isoDate).' هـ';
+        return self::hijriPlain($isoDate);
     }
 
     public static function hijriPlain(string $isoDate): string
     {
-        if (extension_loaded('intl')) {
-            $date = DateTimeImmutable::createFromFormat('Y-m-d', $isoDate);
+        $hijri = SaudiHijriCalendar::gregorianToHijri($isoDate);
 
-            if ($date !== false) {
-                $formatter = new IntlDateFormatter(
-                    'ar_SA@calendar=islamic-umalqura',
-                    IntlDateFormatter::NONE,
-                    IntlDateFormatter::NONE,
-                    'UTC',
-                    IntlDateFormatter::TRADITIONAL,
-                    'dd/MM/y',
-                );
-
-                $formatted = $formatter->format($date);
-
-                if ($formatted !== false) {
-                    return $formatted;
-                }
-            }
-        }
-
-        try {
-            $hijri = Hijri::convertToHijri($isoDate);
-
-            return sprintf('%02d/%02d/%d', $hijri->day, $hijri->month, $hijri->year);
-        } catch (\Throwable) {
+        if ($hijri === null) {
             return self::gregorian($isoDate);
         }
+
+        return sprintf('%02d/%02d/%d', $hijri['day'], $hijri['month'], $hijri['year']);
     }
 
     public static function gregorianRangeLabel(string $fromDate, string $toDate): string

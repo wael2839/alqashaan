@@ -9,7 +9,7 @@ const Breadcrumb = React.forwardRef<
     React.ComponentPropsWithoutRef<'nav'> & {
         separator?: React.ReactNode;
     }
->(({ ...props }, ref) => <nav ref={ref} aria-label="breadcrumb" {...props} />);
+>(({ ...props }, ref) => <nav ref={ref} aria-label="مسار التنقل" {...props} />);
 Breadcrumb.displayName = 'Breadcrumb';
 
 const BreadcrumbList = React.forwardRef<HTMLOListElement, React.ComponentPropsWithoutRef<'ol'>>(({ className, ...props }, ref) => (
@@ -49,7 +49,7 @@ BreadcrumbSeparator.displayName = 'BreadcrumbSeparator';
 const BreadcrumbEllipsis = ({ className, ...props }: React.ComponentProps<'span'>) => (
     <span role="presentation" aria-hidden="true" className={cn('flex h-9 w-9 items-center justify-center', className)} {...props}>
         <MoreHorizontal className="h-4 w-4" />
-        <span className="sr-only">More</span>
+        <span className="sr-only">المزيد</span>
     </span>
 );
 BreadcrumbEllipsis.displayName = 'BreadcrumbElipssis';

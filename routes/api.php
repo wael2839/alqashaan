@@ -1,12 +1,20 @@
 <?php
 
 use App\Http\Controllers\Api\BookingController;
+use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\PaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/calendar/defaults', [CalendarController::class, 'defaults']);
+    Route::get('/calendar/gregorian-to-hijri', [CalendarController::class, 'gregorianToHijri']);
+    Route::get('/calendar/hijri-to-gregorian', [CalendarController::class, 'hijriToGregorian']);
+    Route::get('/calendar/gregorian-month', [CalendarController::class, 'gregorianMonth']);
+    Route::get('/calendar/hijri-year-bounds', [CalendarController::class, 'hijriYearBounds']);
+    Route::get('/calendar/gregorian-year-bounds', [CalendarController::class, 'gregorianYearBounds']);
+
     Route::get('/dashboard/stats', DashboardController::class);
 
     Route::get('/bookings', [BookingController::class, 'index']);

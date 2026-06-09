@@ -48,9 +48,15 @@ export interface PaginatedBookings {
     meta: PaginationMeta;
 }
 
+export interface HijriDateParts {
+    year: number;
+    month: number;
+    day: number;
+}
+
 export interface Booking {
     id: number;
-    contract_number: string;
+    contract_number: string | null;
     customer_name: string;
     phone: string;
     amount: number;
@@ -58,6 +64,8 @@ export interface Booking {
     amount_remaining: number;
     is_fully_paid: boolean;
     booking_date: string;
+    notes: string | null;
+    hijri_date?: HijriDateParts | null;
     type: 'full' | 'men' | 'women';
     status: 'active' | 'completed' | 'cancelled';
     total_revenue: number;
@@ -86,12 +94,14 @@ export interface Expense {
 }
 
 export interface BookedSlot {
+    id: number;
     type: Booking['type'];
     customer_name: string;
 }
 
 export interface DateAvailability {
     date: string;
+    hijri?: HijriDateParts | null;
     available: boolean;
     booked_types: Booking['type'][];
     bookings: BookedSlot[];

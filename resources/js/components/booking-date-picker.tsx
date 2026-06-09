@@ -1,7 +1,13 @@
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { bookingsApi, type BookedSlot, type Booking } from '@/lib/api';
-import { BOOKING_TYPE_LABELS, formatDualDate, formatHijriDate, formatInteger } from '@/lib/dates';
+import {
+    BOOKING_TYPE_LABELS,
+    formatBookingDayStatus,
+    formatDualDate,
+    formatInteger,
+} from '@/lib/dates';
+import { primeGregorianMonth, type HijriParts } from '@/lib/saudi-hijri-calendar';
 import { cn } from '@/lib/utils';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -50,28 +56,6 @@ function formatBookedSlots(bookings: BookedSlot[]): string {
     return bookings.map((booking) => `${booking.customer_name} (${BOOKING_TYPE_LABELS[booking.type]})`).join(' — ');
 }
 
-function getDateInfoText(dateStr: string, available: boolean, bookings: BookedSlot[]): string {
-    const hijri = formatHijriDate(dateStr);
-
-    if (isPastDate(dateStr)) {
-        return `${hijri} — تاريخ سابق`;
-    }
-
-    if (available) {
-        if (bookings.length > 0) {
-            return `${hijri} — متاح لحجزك — محجوز جزئياً: ${formatBookedSlots(bookings)}`;
-        }
-
-        return `${hijri} — متاح للحجز ✓`;
-    }
-
-    if (bookings.length > 0) {
-        return `${hijri} — محجوز لـ ${formatBookedSlots(bookings)}`;
-    }
-
-    return `${hijri} — غير متاح للحجز`;
-}
-
 function getEventElement(target: EventTarget | null): Element | null {
     if (target instanceof Element) {
         return target;
@@ -114,7 +98,8 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
     const [placement, setPlacement] = useState<'above' | 'below'>('above');
     const [arrowOffset, setArrowOffset] = useState(POPOVER_WIDTH / 2);
     const [viewDate, setViewDate] = useState(() => (value ? parseDate(value) : new Date()));
-    const [availability, setAvailability] = useState<Record<string, { available: boolean; bookings: BookedSlot[] }>>({});
+    const [availability, setAvailability] = useState<Record<string, { available: boolean; bookings: BookedSlot[]; hijri?: HijriParts | null }>>({});
+    const [selectedHijri, setSelectedHijri] = useState<HijriParts | null>(null);
     const [loading, setLoading] = useState(false);
     const [hoveredDate, setHoveredDate] = useState<string | null>(null);
     const [focusedDate, setFocusedDate] = useState<string | null>(null);
@@ -126,10 +111,11 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
         bookingsApi
             .availability({ month: monthKey, type, exclude_booking_id: excludeBookingId })
             .then((data) => {
-                const map: Record<string, { available: boolean; bookings: BookedSlot[] }> = {};
+                const map: Record<string, { available: boolean; bookings: BookedSlot[]; hijri?: HijriParts | null }> = {};
                 data.dates.forEach((day) => {
-                    map[day.date] = { available: day.available, bookings: day.bookings };
+                    map[day.date] = { available: day.available, bookings: day.bookings, hijri: day.hijri };
                 });
+                primeGregorianMonth(monthKey, data.dates);
                 setAvailability(map);
             })
             .finally(() => setLoading(false));
@@ -194,8 +180,9 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
     useEffect(() => {
         if (value) {
             setViewDate(parseDate(value));
+            setSelectedHijri(availability[value]?.hijri ?? null);
         }
-    }, [value]);
+    }, [value, availability]);
 
     useEffect(() => {
         if (open) {
@@ -302,6 +289,9 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
 
     const activeInfoDate = hoveredDate ?? focusedDate;
     const activeDayInfo = activeInfoDate ? availability[activeInfoDate] : null;
+    const activeDayDates = activeInfoDate && activeDayInfo ? formatDualDate(activeInfoDate, activeDayInfo.hijri) : null;
+    const activeDayIsPast = activeInfoDate ? isPastDate(activeInfoDate) : false;
+    const activeDayIsAvailable = Boolean(activeDayInfo?.available && activeInfoDate && !activeDayIsPast);
 
     const calendarContent = (
         <div
@@ -378,9 +368,22 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
                             : 'calendar-info-empty border-dashed',
                     )}
                 >
-                    {activeInfoDate && activeDayInfo
-                        ? getDateInfoText(activeInfoDate, activeDayInfo.available && !isPastDate(activeInfoDate), activeDayInfo.bookings)
-                        : 'مرّر فوق أي يوم لعرض التاريخ الهجري والتوفر'}
+                    {activeDayDates && activeDayInfo ? (
+                        <div className="space-y-1">
+                            <p>
+                                {activeDayDates.gregorian} · {activeDayDates.hijri}
+                            </p>
+                            <p>
+                                {formatBookingDayStatus(
+                                    activeDayIsPast,
+                                    activeDayIsAvailable,
+                                    activeDayInfo.bookings.length > 0 ? formatBookedSlots(activeDayInfo.bookings) : undefined,
+                                )}
+                            </p>
+                        </div>
+                    ) : (
+                        'مرّر فوق أي يوم لعرض التاريخ والتوفر'
+                    )}
                 </div>
             </div>
 
@@ -479,8 +482,8 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
                 <CalendarDays className="size-4 shrink-0 text-primary" />
                 {value ? (
                     <span className="flex flex-col items-start leading-tight">
-                        <span className="text-foreground">{formatDualDate(value).gregorian}</span>
-                        <span className="text-xs text-primary">{formatDualDate(value).hijri}</span>
+                        <span className="text-foreground">{formatDualDate(value, selectedHijri).gregorian}</span>
+                        <span className="text-xs text-primary">{formatDualDate(value, selectedHijri).hijri}</span>
                     </span>
                 ) : (
                     'اختر تاريخ الحجز'

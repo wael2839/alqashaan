@@ -7,6 +7,7 @@ use App\Http\Requests\StoreBookingRequest;
 use App\Http\Requests\UpdateBookingRequest;
 use App\Models\Booking;
 use App\Services\BookingConflictValidator;
+use App\Support\SaudiHijriCalendar;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -57,28 +58,17 @@ class BookingController extends Controller
 
     public function store(StoreBookingRequest $request): JsonResponse
     {
-        BookingConflictValidator::validate(
-            $request->validated('booking_date'),
-            $request->validated('type'),
-        );
+        BookingConflictValidator::validate($request->validated('booking_date'));
 
         $booking = DB::transaction(function () use ($request) {
             $data = $request->validated();
             $data['status'] = 'active';
 
-            $booking = Booking::query()->create($data);
-
-            $booking->payments()->create([
-                'amount' => $data['amount'],
-                'description' => 'مبلغ الحجز',
-                'payment_date' => now()->format('Y-m-d'),
-            ]);
-
-            return $booking;
+            return Booking::query()->create($data);
         });
 
         return response()->json([
-            'message' => 'Booking created successfully.',
+            'message' => 'تم إنشاء الحجز بنجاح.',
             'data' => $this->formatBooking($booking->fresh()),
         ], 201);
     }
@@ -108,7 +98,6 @@ class BookingController extends Controller
         if (isset($data['booking_date']) || isset($data['type'])) {
             BookingConflictValidator::validate(
                 $data['booking_date'] ?? $booking->booking_date->format('Y-m-d'),
-                $data['type'] ?? $booking->type,
                 $booking->id,
             );
         }
@@ -116,7 +105,7 @@ class BookingController extends Controller
         $booking->update($data);
 
         return response()->json([
-            'message' => 'Booking updated successfully.',
+            'message' => 'تم تحديث الحجز بنجاح.',
             'data' => $this->formatBooking($booking->fresh()),
         ]);
     }
@@ -126,7 +115,7 @@ class BookingController extends Controller
         $booking->delete();
 
         return response()->json([
-            'message' => 'Booking deleted successfully.',
+            'message' => 'تم حذف الحجز بنجاح.',
         ]);
     }
 
@@ -141,7 +130,7 @@ class BookingController extends Controller
         $booking->update(['status' => 'completed']);
 
         return response()->json([
-            'message' => 'Booking completed successfully.',
+            'message' => 'تم إنهاء الحجز بنجاح.',
             'data' => $this->formatBooking($booking->fresh()),
         ]);
     }
@@ -157,7 +146,7 @@ class BookingController extends Controller
         $booking->update(['status' => 'cancelled']);
 
         return response()->json([
-            'message' => 'Booking cancelled successfully.',
+            'message' => 'تم إلغاء الحجز بنجاح.',
             'data' => $this->formatBooking($booking->fresh()),
         ]);
     }
@@ -172,14 +161,13 @@ class BookingController extends Controller
 
         BookingConflictValidator::validate(
             $booking->booking_date->format('Y-m-d'),
-            $booking->type,
             $booking->id,
         );
 
         $booking->update(['status' => 'active']);
 
         return response()->json([
-            'message' => 'Booking reactivated successfully.',
+            'message' => 'تم إعادة تفعيل الحجز بنجاح.',
             'data' => $this->formatBooking($booking->fresh()),
         ]);
     }
@@ -200,7 +188,7 @@ class BookingController extends Controller
             ->where('status', 'active')
             ->whereBetween('booking_date', [$start->toDateString(), $end->toDateString()])
             ->when($excludeId, fn ($query) => $query->where('id', '!=', $excludeId))
-            ->get(['booking_date', 'type', 'customer_name'])
+            ->get(['id', 'booking_date', 'type', 'customer_name'])
             ->groupBy(fn (Booking $booking) => $booking->booking_date->format('Y-m-d'));
 
         $dates = [];
@@ -213,9 +201,11 @@ class BookingController extends Controller
 
             $dates[] = [
                 'date' => $dateStr,
-                'available' => BookingConflictValidator::isAvailable($dateStr, $validated['type'], $excludeId),
+                'hijri' => SaudiHijriCalendar::gregorianToHijri($dateStr),
+                'available' => BookingConflictValidator::isAvailable($dateStr, $excludeId),
                 'booked_types' => $bookedTypes,
                 'bookings' => $dayBookings->map(fn (Booking $booking) => [
+                    'id' => $booking->id,
                     'type' => $booking->type,
                     'customer_name' => $booking->customer_name,
                 ])->values()->all(),
@@ -244,6 +234,8 @@ class BookingController extends Controller
         $amountPaid = $revenue;
         $amountRemaining = max(0, $amount - $amountPaid);
 
+        $bookingDate = $booking->booking_date->format('Y-m-d');
+
         return [
             'id' => $booking->id,
             'contract_number' => $booking->contract_number,
@@ -253,7 +245,9 @@ class BookingController extends Controller
             'amount_paid' => $amountPaid,
             'amount_remaining' => $amountRemaining,
             'is_fully_paid' => $amountPaid >= $amount,
-            'booking_date' => $booking->booking_date->format('Y-m-d'),
+            'booking_date' => $bookingDate,
+            'notes' => $booking->notes,
+            'hijri_date' => SaudiHijriCalendar::gregorianToHijri($bookingDate),
             'type' => $booking->type,
             'status' => $booking->status,
             'total_revenue' => $revenue,

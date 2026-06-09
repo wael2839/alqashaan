@@ -3,13 +3,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     formatDateRangeLabel,
-    gregorianToHijriParts,
-    hijriToGregorianIso,
+    formatGregorianDate,
     parseIsoDate,
     toIsoDate,
+    type HijriParts,
 } from '@/lib/dates';
+import { gregorianToHijriOfficial, hijriToGregorianOfficial } from '@/lib/saudi-hijri-calendar';
 import { cn } from '@/lib/utils';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export type DashboardCalendarMode = 'gregorian' | 'hijri';
 
@@ -39,19 +40,40 @@ function DateField({
     onChange: (isoDate: string) => void;
 }) {
     const gregorian = parseIsoDate(value);
-    const hijri = gregorianToHijriParts(value);
+    const [hijri, setHijri] = useState<HijriParts | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        gregorianToHijriOfficial(value)
+            .then((parts) => {
+                if (!cancelled) {
+                    setHijri(parts);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setHijri(null);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [value]);
+
     const parts =
         calendarMode === 'gregorian'
             ? { day: gregorian.day, month: gregorian.month, year: gregorian.year }
-            : { day: hijri.hd, month: hijri.hm, year: hijri.hy };
+            : { day: hijri?.day ?? 1, month: hijri?.month ?? 1, year: hijri?.year ?? 1447 };
 
     const yearOptions = useMemo(() => {
-        const center = calendarMode === 'gregorian' ? gregorian.year : hijri.hy;
+        const center = calendarMode === 'gregorian' ? gregorian.year : parts.year;
 
         return Array.from({ length: 21 }, (_, index) => center - 10 + index);
-    }, [calendarMode, gregorian.year, hijri.hy]);
+    }, [calendarMode, gregorian.year, parts.year]);
 
-    const update = (field: 'day' | 'month' | 'year', raw: string) => {
+    const update = async (field: 'day' | 'month' | 'year', raw: string) => {
         const next = {
             day: field === 'day' ? Number(raw) : parts.day,
             month: field === 'month' ? Number(raw) : parts.month,
@@ -63,14 +85,15 @@ function DateField({
             return;
         }
 
-        onChange(hijriToGregorianIso(next.year, next.month, next.day));
+        const isoDate = await hijriToGregorianOfficial(next.year, next.month, next.day);
+        onChange(isoDate);
     };
 
     return (
         <div className="min-w-[220px] flex-1 space-y-2">
             <Label>{label}</Label>
             <div className="grid grid-cols-3 gap-2">
-                <Select value={String(parts.day).padStart(2, '0')} onValueChange={(day) => update('day', day)}>
+                <Select value={String(parts.day).padStart(2, '0')} onValueChange={(day) => void update('day', day)}>
                     <SelectTrigger className={selectTriggerClass}>
                         <SelectValue placeholder="يوم" />
                     </SelectTrigger>
@@ -82,7 +105,7 @@ function DateField({
                         ))}
                     </SelectContent>
                 </Select>
-                <Select value={String(parts.month).padStart(2, '0')} onValueChange={(month) => update('month', month)}>
+                <Select value={String(parts.month).padStart(2, '0')} onValueChange={(month) => void update('month', month)}>
                     <SelectTrigger className={selectTriggerClass}>
                         <SelectValue placeholder="شهر" />
                     </SelectTrigger>
@@ -94,7 +117,7 @@ function DateField({
                         ))}
                     </SelectContent>
                 </Select>
-                <Select value={String(parts.year)} onValueChange={(year) => update('year', year)}>
+                <Select value={String(parts.year)} onValueChange={(year) => void update('year', year)}>
                     <SelectTrigger className={selectTriggerClass}>
                         <SelectValue placeholder="سنة" />
                     </SelectTrigger>
@@ -119,7 +142,32 @@ export function DashboardDateRangeFilter({
     onToDateChange,
     onCalendarModeChange,
 }: DashboardDateRangeFilterProps) {
-    const rangeLabel = formatDateRangeLabel(fromDate, toDate);
+    const [fromHijri, setFromHijri] = useState<HijriParts | null>(null);
+    const [toHijri, setToHijri] = useState<HijriParts | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        Promise.all([gregorianToHijriOfficial(fromDate), gregorianToHijriOfficial(toDate)])
+            .then(([from, to]) => {
+                if (!cancelled) {
+                    setFromHijri(from);
+                    setToHijri(to);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setFromHijri(null);
+                    setToHijri(null);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [fromDate, toDate]);
+
+    const rangeLabel = formatDateRangeLabel(fromDate, toDate, fromHijri, toHijri);
 
     return (
         <div className="space-y-3 rounded-xl border border-border bg-card p-4">
@@ -151,8 +199,9 @@ export function DashboardDateRangeFilter({
             </div>
 
             <p className={cn('meta-text border-t border-border pt-3')}>
-                {rangeLabel.gregorian} — {rangeLabel.hijri}
+                {formatGregorianDate(fromDate)} — {formatGregorianDate(toDate)} · {rangeLabel.hijri}
             </p>
+            <p className="meta-text">التاريخ المعتمد في النظام هو التاريخ الميلادي؛ التاريخ الهجري للعرض والمساعدة فقط.</p>
         </div>
     );
 }

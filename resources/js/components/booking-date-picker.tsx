@@ -180,6 +180,11 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
     useEffect(() => {
         if (value) {
             setViewDate(parseDate(value));
+        }
+    }, [value]);
+
+    useEffect(() => {
+        if (value) {
             setSelectedHijri(availability[value]?.hijri ?? null);
         }
     }, [value, availability]);
@@ -476,7 +481,12 @@ export function BookingDatePicker({ value, onChange, type, error, excludeBooking
                 )}
                 onClick={() => {
                     setPopoverStyle({ visibility: 'hidden' });
-                    setOpen((prev) => !prev);
+                    setOpen((prev) => {
+                        if (!prev && value) {
+                            setViewDate(parseDate(value));
+                        }
+                        return !prev;
+                    });
                 }}
             >
                 <CalendarDays className="size-4 shrink-0 text-primary" />
